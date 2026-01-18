@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart3, ArrowLeft, Camera, TrendingUp, Users, Heart } from "lucide-react";
+import { BarChart3, ArrowLeft, TrendingUp, Heart, Camera } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -8,64 +8,112 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from "recharts";
 
+interface InstagramPost {
+  id: string;
+  type: string;
+  shortCode: string;
+  caption: string;
+  url: string;
+  commentsCount: number;
+  likesCount: number;
+  videoViewCount?: number;
+  videoPlayCount?: number;
+  timestamp: string;
+  ownerUsername?: string;
+  ownerFullName?: string;
+}
+
 interface PostData {
-  id: number;
+  id: string;
   date: string;
   likes: number;
   comments: number;
-  shares: number;
+  views: number;
   engagement: number;
+  caption: string;
+  type: string;
+  shortCode: string;
 }
 
 const AccountAnalysis = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<{
     posts: PostData[];
     totalPosts: number;
     totalLikes: number;
     totalComments: number;
+    totalViews: number;
     avgEngagement: number;
-    followers: number;
+    accountUsername: string;
   } | null>(null);
 
-  const handleAnalyze = (e: React.FormEvent) => {
+  const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (!username.trim()) {
+      setError("Please enter an Instagram username");
+      return;
+    }
 
-    // Simulate API call with mock data
-    setTimeout(() => {
-      const mockPosts: PostData[] = Array.from({ length: 12 }, (_, i) => {
-        const likes = Math.floor(Math.random() * 5000) + 500;
-        const comments = Math.floor(Math.random() * 300) + 20;
-        const shares = Math.floor(Math.random() * 200) + 10;
-        const engagement = ((likes + comments + shares) / 10000) * 100;
+    setIsLoading(true);
+    setError(null);
+    setAnalysisData(null);
+
+    try {
+      const cleanUsername = username.trim().replace('@', '');
+      const response = await fetch(`http://localhost:3000/api/profile/posts/${cleanUsername}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch account data. Please check the username.");
+      }
+
+      const data: InstagramPost[] = await response.json();
+
+      if (!data || data.length === 0) {
+        throw new Error("No posts found for this account");
+      }
+
+      // Transform API data to chart format
+      const posts: PostData[] = data.map((post) => {
+        const likes = post.likesCount || 0;
+        const comments = post.commentsCount || 0;
+        const views = post.videoViewCount || post.videoPlayCount || 0;
+        const totalEngagement = likes + comments;
 
         return {
-          id: i + 1,
-          date: `Post ${i + 1}`,
+          id: post.id,
+          date: new Date(post.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
           likes,
           comments,
-          shares,
-          engagement: Number(engagement.toFixed(2)),
+          views,
+          engagement: totalEngagement,
+          caption: post.caption || 'No caption',
+          type: post.type,
+          shortCode: post.shortCode,
         };
-      });
+      }).reverse(); // Reverse to show oldest to newest
 
-      const totalLikes = mockPosts.reduce((sum, post) => sum + post.likes, 0);
-      const totalComments = mockPosts.reduce((sum, post) => sum + post.comments, 0);
-      const avgEngagement = mockPosts.reduce((sum, post) => sum + post.engagement, 0) / mockPosts.length;
+      const totalLikes = posts.reduce((sum, post) => sum + post.likes, 0);
+      const totalComments = posts.reduce((sum, post) => sum + post.comments, 0);
+      const totalViews = posts.reduce((sum, post) => sum + post.views, 0);
+      const avgEngagement = posts.reduce((sum, post) => sum + post.engagement, 0) / posts.length;
 
       setAnalysisData({
-        posts: mockPosts,
-        totalPosts: mockPosts.length,
+        posts,
+        totalPosts: posts.length,
         totalLikes,
         totalComments,
+        totalViews,
         avgEngagement: Number(avgEngagement.toFixed(2)),
-        followers: Math.floor(Math.random() * 50000) + 10000,
+        accountUsername: data[0]?.ownerUsername || cleanUsername,
       });
       setIsLoading(false);
-    }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred while fetching data");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -141,6 +189,15 @@ const AccountAnalysis = () => {
           </CardContent>
         </Card>
 
+        {/* Error Message */}
+        {error && (
+          <Card className="bg-destructive/10 border-destructive mb-8">
+            <CardContent className="pt-6">
+              <p className="text-destructive font-medium">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Results Section */}
         {analysisData && (
           <div className="space-y-8 animate-fade-in">
@@ -164,20 +221,6 @@ const AccountAnalysis = () => {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Followers</p>
-                      <p className="text-3xl font-bold text-foreground">{analysisData.followers.toLocaleString()}</p>
-                    </div>
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center">
-                      <Users className="w-6 h-6 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
                       <p className="text-sm text-muted-foreground">Total Likes</p>
                       <p className="text-3xl font-bold text-foreground">{analysisData.totalLikes.toLocaleString()}</p>
                     </div>
@@ -192,8 +235,22 @@ const AccountAnalysis = () => {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
+                      <p className="text-sm text-muted-foreground">Total Comments</p>
+                      <p className="text-3xl font-bold text-foreground">{analysisData.totalComments.toLocaleString()}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center">
+                      <BarChart3 className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card border-border">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
                       <p className="text-sm text-muted-foreground">Avg Engagement</p>
-                      <p className="text-3xl font-bold text-foreground">{analysisData.avgEngagement}%</p>
+                      <p className="text-3xl font-bold text-foreground">{analysisData.avgEngagement.toLocaleString()}</p>
                     </div>
                     <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center">
                       <TrendingUp className="w-6 h-6 text-white" />
@@ -248,7 +305,7 @@ const AccountAnalysis = () => {
               <CardHeader>
                 <CardTitle className="text-foreground">Post Interactions Breakdown</CardTitle>
                 <CardDescription className="text-muted-foreground">
-                  Compare likes, comments, and shares across posts
+                  Compare likes and comments across posts
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -268,7 +325,6 @@ const AccountAnalysis = () => {
                     <Legend />
                     <Bar dataKey="likes" fill="#f43f5e" name="Likes" />
                     <Bar dataKey="comments" fill="#3b82f6" name="Comments" />
-                    <Bar dataKey="shares" fill="#10b981" name="Shares" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -333,7 +389,6 @@ const AccountAnalysis = () => {
                         <th className="text-left py-3 px-4 text-foreground font-semibold">Post</th>
                         <th className="text-left py-3 px-4 text-foreground font-semibold">Likes</th>
                         <th className="text-left py-3 px-4 text-foreground font-semibold">Comments</th>
-                        <th className="text-left py-3 px-4 text-foreground font-semibold">Shares</th>
                         <th className="text-left py-3 px-4 text-foreground font-semibold">Engagement</th>
                       </tr>
                     </thead>
@@ -343,10 +398,9 @@ const AccountAnalysis = () => {
                           <td className="py-3 px-4 text-muted-foreground">{post.date}</td>
                           <td className="py-3 px-4 text-foreground font-medium">{post.likes.toLocaleString()}</td>
                           <td className="py-3 px-4 text-foreground font-medium">{post.comments.toLocaleString()}</td>
-                          <td className="py-3 px-4 text-foreground font-medium">{post.shares.toLocaleString()}</td>
                           <td className="py-3 px-4">
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-primary/20 text-primary">
-                              {post.engagement}%
+                              {post.engagement.toLocaleString()}
                             </span>
                           </td>
                         </tr>
